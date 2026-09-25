@@ -255,6 +255,74 @@ async function waitForStableLocator(page: Page, getLocator: () => Promise<Locato
   }
   throw new Error("Timed out waiting for stable locator box");
 }
+
+/**
+ * Persist one column group for a fixture gradebook, with exactly the declared columns as members.
+ *
+ * Group membership is stored data (gradebook_columns.gradebook_column_group_id), and fixtures created
+ * after the migrations have none, so a fixture that needs a group has to declare it. Columns are
+ * resolved by exact slug within this class's gradebook; anything missing or ambiguous throws.
+ */
+async function createFixtureColumnGroup(class_id: number, name: string, slugs: string[]) {
+  const { data: klass, error: classError } = await supabase
+    .from("classes")
+    .select("gradebook_id")
+    .eq("id", class_id)
+    .single();
+  if (classError || !klass?.gradebook_id) {
+    throw new Error(`Fixture class ${class_id} has no gradebook: ${classError?.message}`);
+  }
+  const gradebook_id = klass.gradebook_id;
+  const { data: gradebook, error: gradebookError } = await supabase
+    .from("gradebooks")
+    .select("id, class_id")
+    .eq("id", gradebook_id)
+    .single();
+  if (gradebookError || gradebook?.class_id !== class_id) {
+    throw new Error(`Gradebook ${gradebook_id} does not belong to class ${class_id}: ${gradebookError?.message}`);
+  }
+
+  const { data: columns, error: columnsError } = await supabase
+    .from("gradebook_columns")
+    .select("id, slug")
+    .eq("gradebook_id", gradebook_id)
+    .in("slug", slugs);
+  if (columnsError || !columns) {
+    throw new Error(`Failed to read fixture columns for group ${name}: ${columnsError?.message}`);
+  }
+  const columnIds = slugs.map((slug) => {
+    const matches = columns.filter((column) => column.slug === slug);
+    if (matches.length !== 1) {
+      throw new Error(
+        `Fixture group ${name}: expected exactly one column "${slug}" in gradebook ${gradebook_id}, found ${matches.length}`
+      );
+    }
+    return matches[0].id;
+  });
+  if (new Set(columnIds).size !== columnIds.length) {
+    throw new Error(`Fixture group ${name} declares the same column more than once`);
+  }
+
+  const { data: group, error: groupError } = await supabase
+    .from("gradebook_column_groups")
+    .insert({ class_id, gradebook_id, name })
+    .select("id")
+    .single();
+  if (groupError || !group) {
+    throw new Error(`Failed to create fixture group ${name}: ${groupError?.message}`);
+  }
+  const { data: updated, error: updateError } = await supabase
+    .from("gradebook_columns")
+    .update({ gradebook_column_group_id: group.id })
+    .in("id", columnIds)
+    .select("id");
+  if (updateError || updated?.length !== columnIds.length) {
+    throw new Error(
+      `Failed to assign ${columnIds.length} columns to fixture group ${name}: ${updateError?.message ?? `${updated?.length} updated`}`
+    );
+  }
+}
+
 test.setTimeout(360_000);
 test.describe("Gradebook Page - Comprehensive", () => {
   test.describe.configure({ mode: "serial" });
@@ -793,6 +861,16 @@ test.describe("Gradebook Page - Comprehensive", () => {
     expect(studScoreAfter?.score).toBe(61);
 
     await studentClient.auth.signOut();
+
+    // The assignment columns' group, as persisted data. This is the grouping this fixture has always
+    // rendered with: the code-walk column (NULL sort_order) sits with Assignments 2-4, and
+    // Assignment 1 stands alone.
+    await createFixtureColumnGroup(course.id, "Assignment", [
+      "assignment-assignment-1-code-walk",
+      "assignment-assignment-2",
+      "assignment-assignment-3",
+      "assignment-assignment-4"
+    ]);
   });
   test.afterEach(async ({ logMagicLinksOnFailure }) => {
     await logMagicLinksOnFailure([...students, instructor]);
@@ -1615,6 +1693,14 @@ test.describe("Gradebook column reorder (issue #531)", () => {
       manualGradedColumnSlugs: ["participation"],
       groupConfig: "both"
     });
+
+    // The assignment columns' group, as persisted data.
+    await createFixtureColumnGroup(reorderCourse.id, "Assignment", [
+      "assignment-assignment-1",
+      "assignment-assignment-2",
+      "assignment-assignment-3",
+      "assignment-assignment-4"
+    ]);
   });
 
   test.beforeEach(async ({ page }) => {

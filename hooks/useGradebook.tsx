@@ -135,6 +135,24 @@ export function useGradebookColumns() {
   return columns;
 }
 
+export type GradebookColumnGroup = Database["public"]["Tables"]["gradebook_column_groups"]["Row"];
+
+/** Persisted column groups of the current gradebook. Loaded before the gradebook renders (see readyPromise). */
+export function useGradebookColumnGroups() {
+  const gradebookController = useGradebookController();
+  const [groups, setGroups] = useState<GradebookColumnGroup[]>(gradebookController.gradebook_column_groups.rows);
+
+  useEffect(() => {
+    const { unsubscribe, data } = gradebookController.gradebook_column_groups.list((rows) => {
+      setGroups(rows);
+    });
+    setGroups(data);
+    return unsubscribe;
+  }, [gradebookController]);
+
+  return groups;
+}
+
 /**
  * Subscribes to changes in `gradebooks.expression_prefix` so any component
  * that depends on the prefix (e.g. the Expression Builder's render-expression
@@ -1401,10 +1419,12 @@ export class GradebookController {
   /** Single-row controller for this gradebook (hydrates expression_prefix, etc.). */
   readonly gradebook_row: TableController<"gradebooks">;
   readonly gradebook_columns: TableController<"gradebook_columns">;
+  /** Persisted column groups for this gradebook; membership lives on gradebook_columns.gradebook_column_group_id. */
+  readonly gradebook_column_groups: TableController<"gradebook_column_groups">;
   readonly table: GradebookCellController;
   readonly assignments_table: TableController<"assignments">;
 
-  readonly readyPromise: Promise<[void, void, void, void]>;
+  readonly readyPromise: Promise<[void, void, void, void, void]>;
 
   public studentSubmissions: Map<string, Database["public"]["Views"]["active_submissions_for_class"]["Row"][]> =
     new Map();
@@ -1446,6 +1466,12 @@ export class GradebookController {
       query: client.from("gradebook_columns").select("*").eq("gradebook_id", gradebook_id),
       classRealTimeController
     });
+    this.gradebook_column_groups = new TableController({
+      client,
+      table: "gradebook_column_groups",
+      query: client.from("gradebook_column_groups").select("*").eq("gradebook_id", gradebook_id),
+      classRealTimeController
+    });
     const { unsubscribe: gradebookRowUnsubscribe } = this.gradebook_row.list(() => {
       // Prefix lives on gradebooks.expression_prefix; recompute renderers when the row updates.
       this.syncCellRenderersFromColumns(this.gradebook_columns.rows);
@@ -1470,6 +1496,7 @@ export class GradebookController {
     this.readyPromise = Promise.all([
       this.gradebook_row.readyPromise,
       this.gradebook_columns.readyPromise,
+      this.gradebook_column_groups.readyPromise,
       this.table.readyPromise,
       this.assignments_table.readyPromise
     ]);
@@ -1509,7 +1536,7 @@ export class GradebookController {
 
   private _setupRefetchTracking() {
     // Track refetch status for tables (GradebookCellController doesn't expose refetch status)
-    const tables = [this.gradebook_row, this.gradebook_columns, this.assignments_table];
+    const tables = [this.gradebook_row, this.gradebook_columns, this.gradebook_column_groups, this.assignments_table];
 
     tables.forEach((table) => {
       const unsubscribe = table.subscribeToRefetchStatus(() => {
@@ -1522,7 +1549,10 @@ export class GradebookController {
   private _updateRefetchStatus() {
     // Check if any table is currently refetching
     const isAnyRefetching =
-      this.gradebook_row.isRefetching || this.gradebook_columns.isRefetching || this.assignments_table.isRefetching;
+      this.gradebook_row.isRefetching ||
+      this.gradebook_columns.isRefetching ||
+      this.gradebook_column_groups.isRefetching ||
+      this.assignments_table.isRefetching;
 
     if (this._isAnyTableRefetching !== isAnyRefetching) {
       this._isAnyTableRefetching = isAnyRefetching;
@@ -1533,6 +1563,7 @@ export class GradebookController {
   close() {
     this.gradebook_row.close();
     this.gradebook_columns.close();
+    this.gradebook_column_groups.close();
     this.table.close();
     this.assignments_table.close();
     this._unsubscribes.forEach((unsubscribe) => unsubscribe());
@@ -1936,7 +1967,13 @@ export class GradebookController {
 
   // Removed get gradebook() method - use new GradebookCellController data directly instead
   get isReady() {
-    return this.gradebook_row.ready && this.gradebook_columns.ready && this.table.ready && this.assignments_table.ready;
+    return (
+      this.gradebook_row.ready &&
+      this.gradebook_columns.ready &&
+      this.gradebook_column_groups.ready &&
+      this.table.ready &&
+      this.assignments_table.ready
+    );
   }
 
   get isAnyTableRefetching() {

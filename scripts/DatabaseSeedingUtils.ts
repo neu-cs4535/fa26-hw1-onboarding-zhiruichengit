@@ -5198,6 +5198,7 @@ final;`,
 
     await this.renumberGradebookColumnsForGrouping(class_id);
     await this.deleteGradebookColumnBySlug(class_id, "quiz-3");
+    await this.createColumnGroupFixtureGroups(class_id);
 
     // Quiz scores are set after the delete so quiz-3 never gets any (the delete path has to
     // clear gradebook_column_students first, and there is no reason to make it do more work).
@@ -5335,6 +5336,96 @@ final;`,
       throw new Error(`Failed to delete gradebook column ${slug}: ${deleteError.message}`);
     }
     console.log(`   ✓ Deleted ${slug}, leaving a gap in sort_order`);
+  }
+
+  /**
+   * Persist the CS 4535 gradebook's column groups.
+   *
+   * The seed runs after the migrations, so the one-time column-group backfill never sees this
+   * gradebook and every column would otherwise have no group. The groups are declared here as
+   * fixture data: exactly what that backfill produces for this layout, including the two separate
+   * "Quiz" groups the quiz-3 hole creates. Throws if the layout and the declaration disagree.
+   */
+  private async createColumnGroupFixtureGroups(class_id: number) {
+    const declared: Array<{ name: string; slugs: string[] }> = [
+      { name: "Lab", slugs: ["assignment-lab-1", "assignment-lab-2", "assignment-lab-3", "assignment-lab-4"] },
+      {
+        name: "Assignment",
+        slugs: [
+          "assignment-assignment-1",
+          "assignment-assignment-2",
+          "assignment-assignment-3",
+          "assignment-assignment-4"
+        ]
+      },
+      { name: "Exam", slugs: ["exam-1", "exam-2", "exam-3"] },
+      { name: "Quiz", slugs: ["quiz-1", "quiz-2"] },
+      { name: "Quiz", slugs: ["quiz-4", "quiz-5"] },
+      { name: "Skill", slugs: Array.from({ length: 12 }, (_, i) => `skill-${i + 1}`) },
+      { name: "Meets", slugs: ["meets-expectations"] },
+      { name: "Approaching", slugs: ["approaching-expectations"] },
+      { name: "Does", slugs: ["does-not-meet-expectations"] },
+      { name: "Average.hw", slugs: ["average.hw"] },
+      { name: "Labs", slugs: ["labs-drop-lowest"] },
+      { name: "Total", slugs: ["total-labs"] },
+      { name: "Curve", slugs: ["curve-adjustment"] },
+      { name: "Midterm", slugs: ["midterm-standing"] },
+      { name: "Attendance", slugs: ["attendance"] },
+      { name: "Ai", slugs: ["ai-usage-log-1", "ai-usage-log-2"] },
+      { name: "Assignment", slugs: ["assignment-final"] },
+      { name: "Final", slugs: ["final"] }
+    ];
+
+    const { data: gradebook, error: gradebookError } = await supabase
+      .from("gradebooks")
+      .select("id")
+      .eq("class_id", class_id)
+      .single();
+    if (gradebookError || !gradebook) {
+      throw new Error(`Cannot find the gradebook for class ${class_id}: ${gradebookError?.message}`);
+    }
+    const { data: columns, error: columnsError } = await supabase
+      .from("gradebook_columns")
+      .select("id, slug")
+      .eq("gradebook_id", gradebook.id);
+    if (columnsError || !columns) {
+      throw new Error(`Failed to read gradebook columns for class ${class_id}: ${columnsError?.message}`);
+    }
+
+    const columnIdBySlug = new Map(columns.map((column) => [column.slug, column.id]));
+    const declaredSlugs = declared.flatMap((group) => group.slugs);
+    const duplicated = declaredSlugs.filter((slug, index) => declaredSlugs.indexOf(slug) !== index);
+    const missing = declaredSlugs.filter((slug) => !columnIdBySlug.has(slug));
+    const undeclared = columns.filter((column) => !declaredSlugs.includes(column.slug)).map((column) => column.slug);
+    if (duplicated.length || missing.length || undeclared.length || columns.length !== 40 || declared.length !== 18) {
+      throw new Error(
+        `Column-group fixture does not match the CS 4535 layout: ${columns.length} columns (expected 40), ` +
+          `${declared.length} groups (expected 18); duplicated: [${duplicated.join(", ")}], ` +
+          `missing: [${missing.join(", ")}], undeclared: [${undeclared.join(", ")}]`
+      );
+    }
+
+    for (const group of declared) {
+      const { data: row, error: insertError } = await supabase
+        .from("gradebook_column_groups")
+        .insert({ class_id, gradebook_id: gradebook.id, name: group.name })
+        .select("id")
+        .single();
+      if (insertError || !row) {
+        throw new Error(`Failed to create column group ${group.name}: ${insertError?.message}`);
+      }
+      const { error: updateError } = await supabase
+        .from("gradebook_columns")
+        .update({ gradebook_column_group_id: row.id })
+        .in(
+          "id",
+          group.slugs.map((slug) => columnIdBySlug.get(slug)!)
+        );
+      if (updateError) {
+        throw new Error(`Failed to assign columns to group ${group.name}: ${updateError.message}`);
+      }
+    }
+    console.log(`   ✓ Persisted ${declared.length} column groups for ${columns.length} columns`);
   }
 
   // Helper method to create current grading scheme columns
