@@ -3613,10 +3613,10 @@ export type Database = {
           },
           {
             foreignKeyName: "gradebook_column_groups_gradebook_id_fkey";
-            columns: ["gradebook_id"];
+            columns: ["gradebook_id", "class_id"];
             isOneToOne: false;
             referencedRelation: "gradebooks";
-            referencedColumns: ["id"];
+            referencedColumns: ["id", "class_id"];
           }
         ];
       };
@@ -3804,10 +3804,10 @@ export type Database = {
           },
           {
             foreignKeyName: "gradebook_columns_gradebook_column_group_id_fkey";
-            columns: ["gradebook_column_group_id"];
+            columns: ["gradebook_column_group_id", "gradebook_id"];
             isOneToOne: false;
             referencedRelation: "gradebook_column_groups";
-            referencedColumns: ["id"];
+            referencedColumns: ["id", "gradebook_id"];
           },
           {
             foreignKeyName: "gradebook_columns_gradebook_id_fkey";
