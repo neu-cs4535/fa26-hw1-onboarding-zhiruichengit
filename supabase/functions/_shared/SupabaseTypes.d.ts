@@ -1712,6 +1712,9 @@ export type Database = {
           created_at: string;
           discussion_threads_total: number | null;
           gradebook_columns_total: number | null;
+          grading_actions_comment_total: number;
+          grading_actions_release_total: number;
+          grading_actions_rubric_check_total: number;
           help_request_messages_total: number | null;
           help_requests_open: number | null;
           help_requests_total: number | null;
@@ -1743,6 +1746,9 @@ export type Database = {
           created_at?: string;
           discussion_threads_total?: number | null;
           gradebook_columns_total?: number | null;
+          grading_actions_comment_total?: number;
+          grading_actions_release_total?: number;
+          grading_actions_rubric_check_total?: number;
           help_request_messages_total?: number | null;
           help_requests_open?: number | null;
           help_requests_total?: number | null;
@@ -1774,6 +1780,9 @@ export type Database = {
           created_at?: string;
           discussion_threads_total?: number | null;
           gradebook_columns_total?: number | null;
+          grading_actions_comment_total?: number;
+          grading_actions_release_total?: number;
+          grading_actions_rubric_check_total?: number;
           help_request_messages_total?: number | null;
           help_requests_open?: number | null;
           help_requests_total?: number | null;
@@ -2202,6 +2211,8 @@ export type Database = {
           last_retry_requested_at: string | null;
           observed_count: number;
           observed_discord_id: string | null;
+          self_retry_count: number;
+          self_retry_window_started_at: string | null;
           state: Database["public"]["Enums"]["discord_membership_state"];
           user_id: string;
         };
@@ -2217,6 +2228,8 @@ export type Database = {
           last_retry_requested_at?: string | null;
           observed_count?: number;
           observed_discord_id?: string | null;
+          self_retry_count?: number;
+          self_retry_window_started_at?: string | null;
           state: Database["public"]["Enums"]["discord_membership_state"];
           user_id: string;
         };
@@ -2232,6 +2245,8 @@ export type Database = {
           last_retry_requested_at?: string | null;
           observed_count?: number;
           observed_discord_id?: string | null;
+          self_retry_count?: number;
+          self_retry_window_started_at?: string | null;
           state?: Database["public"]["Enums"]["discord_membership_state"];
           user_id?: string;
         };
@@ -3566,6 +3581,45 @@ export type Database = {
         };
         Relationships: [];
       };
+      gradebook_column_groups: {
+        Row: {
+          class_id: number;
+          created_at: string;
+          gradebook_id: number;
+          id: number;
+          name: string;
+        };
+        Insert: {
+          class_id: number;
+          created_at?: string;
+          gradebook_id: number;
+          id?: number;
+          name: string;
+        };
+        Update: {
+          class_id?: number;
+          created_at?: string;
+          gradebook_id?: number;
+          id?: number;
+          name?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "gradebook_column_groups_class_id_fkey";
+            columns: ["class_id"];
+            isOneToOne: false;
+            referencedRelation: "classes";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "gradebook_column_groups_gradebook_id_fkey";
+            columns: ["gradebook_id"];
+            isOneToOne: false;
+            referencedRelation: "gradebooks";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
       gradebook_column_students: {
         Row: {
           class_id: number;
@@ -3683,6 +3737,7 @@ export type Database = {
           dependencies: Json | null;
           description: string | null;
           external_data: Json | null;
+          gradebook_column_group_id: number | null;
           gradebook_id: number;
           id: number;
           instructor_only: boolean;
@@ -3703,6 +3758,7 @@ export type Database = {
           dependencies?: Json | null;
           description?: string | null;
           external_data?: Json | null;
+          gradebook_column_group_id?: number | null;
           gradebook_id: number;
           id?: number;
           instructor_only?: boolean;
@@ -3723,6 +3779,7 @@ export type Database = {
           dependencies?: Json | null;
           description?: string | null;
           external_data?: Json | null;
+          gradebook_column_group_id?: number | null;
           gradebook_id?: number;
           id?: number;
           instructor_only?: boolean;
@@ -3743,6 +3800,13 @@ export type Database = {
             columns: ["class_id"];
             isOneToOne: false;
             referencedRelation: "classes";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "gradebook_columns_gradebook_column_group_id_fkey";
+            columns: ["gradebook_column_group_id"];
+            isOneToOne: false;
+            referencedRelation: "gradebook_column_groups";
             referencedColumns: ["id"];
           },
           {
@@ -12678,14 +12742,6 @@ export type Database = {
         Returns: boolean;
       };
       custom_access_token_hook: { Args: { event: Json }; Returns: Json };
-      database_ram_metrics: {
-        Args: never;
-        Returns: {
-          metric_labels: Json;
-          metric_name: string;
-          metric_value: number;
-        }[];
-      };
       deactivate_expired_polls: { Args: never; Returns: undefined };
       delete_assignment_with_all_data: {
         Args: { p_assignment_id: number; p_class_id: number };
@@ -13407,6 +13463,7 @@ export type Database = {
           dependencies: Json | null;
           description: string | null;
           external_data: Json | null;
+          gradebook_column_group_id: number | null;
           gradebook_id: number;
           id: number;
           instructor_only: boolean;
@@ -13436,6 +13493,7 @@ export type Database = {
           dependencies: Json | null;
           description: string | null;
           external_data: Json | null;
+          gradebook_column_group_id: number | null;
           gradebook_id: number;
           id: number;
           instructor_only: boolean;
@@ -13617,6 +13675,14 @@ export type Database = {
       merge_duplicate_class_enrollments: {
         Args: { p_class_id?: number };
         Returns: number;
+      };
+      metrics_workflow_errors_by_category: {
+        Args: { window_hours?: number };
+        Returns: {
+          category: string;
+          class_id: string;
+          count: number;
+        }[];
       };
       metrics_workflow_errors_by_name: {
         Args: { window_hours?: number };
