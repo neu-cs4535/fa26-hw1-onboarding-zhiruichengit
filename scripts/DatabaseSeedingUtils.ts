@@ -5343,8 +5343,9 @@ final;`,
    *
    * The seed runs after the migrations, so the one-time column-group backfill never sees this
    * gradebook and every column would otherwise have no group. The groups are declared here as
-   * fixture data: exactly what that backfill produces for this layout, including the two separate
-   * "Quiz" groups the quiz-3 hole creates. Throws if the layout and the declaration disagree.
+   * fixture data, in the state the backfill plus its credit corrections produce for this layout:
+   * the quiz family is one group despite the quiz-3 hole, and the three expectation summaries are
+   * one "Expectations" group. Throws if the layout and the declaration disagree.
    */
   private async createColumnGroupFixtureGroups(class_id: number) {
     const declared: Array<{ name: string; slugs: string[] }> = [
@@ -5359,12 +5360,9 @@ final;`,
         ]
       },
       { name: "Exam", slugs: ["exam-1", "exam-2", "exam-3"] },
-      { name: "Quiz", slugs: ["quiz-1", "quiz-2"] },
-      { name: "Quiz", slugs: ["quiz-4", "quiz-5"] },
+      { name: "Quiz", slugs: ["quiz-1", "quiz-2", "quiz-4", "quiz-5"] },
       { name: "Skill", slugs: Array.from({ length: 12 }, (_, i) => `skill-${i + 1}`) },
-      { name: "Meets", slugs: ["meets-expectations"] },
-      { name: "Approaching", slugs: ["approaching-expectations"] },
-      { name: "Does", slugs: ["does-not-meet-expectations"] },
+      { name: "Expectations", slugs: ["meets-expectations", "approaching-expectations", "does-not-meet-expectations"] },
       { name: "Average.hw", slugs: ["average.hw"] },
       { name: "Labs", slugs: ["labs-drop-lowest"] },
       { name: "Total", slugs: ["total-labs"] },
@@ -5397,10 +5395,10 @@ final;`,
     const duplicated = declaredSlugs.filter((slug, index) => declaredSlugs.indexOf(slug) !== index);
     const missing = declaredSlugs.filter((slug) => !columnIdBySlug.has(slug));
     const undeclared = columns.filter((column) => !declaredSlugs.includes(column.slug)).map((column) => column.slug);
-    if (duplicated.length || missing.length || undeclared.length || columns.length !== 40 || declared.length !== 18) {
+    if (duplicated.length || missing.length || undeclared.length || columns.length !== 40 || declared.length !== 15) {
       throw new Error(
         `Column-group fixture does not match the CS 4535 layout: ${columns.length} columns (expected 40), ` +
-          `${declared.length} groups (expected 18); duplicated: [${duplicated.join(", ")}], ` +
+          `${declared.length} groups (expected 15); duplicated: [${duplicated.join(", ")}], ` +
           `missing: [${missing.join(", ")}], undeclared: [${undeclared.join(", ")}]`
       );
     }
